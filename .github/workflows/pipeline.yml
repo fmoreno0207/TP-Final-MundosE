@@ -42,7 +42,7 @@ jobs:
           file: ./grafana/Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/grafana-custom:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/grafana-custom-app:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/grafana-custom:${{ github.run_number }}
 
       # 5. Construye y publica la imagen de Prometheus (personalizada)
