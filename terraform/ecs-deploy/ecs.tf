@@ -20,7 +20,7 @@ resource "aws_ecs_task_definition" "monitoring" {
   container_definitions = jsonencode([
     {
       name      = "ecommerce-app"
-      image     = var.container_image
+      image     = var.frontend_image
       essential = true
       portMappings = [
         {
@@ -32,7 +32,7 @@ resource "aws_ecs_task_definition" "monitoring" {
     },
     {
       name  = "prometheus"
-      image = "prom/prometheus:latest"
+      image = var.prometheus_image
       essential = false
       portMappings = [
         {
@@ -54,7 +54,7 @@ resource "aws_ecs_task_definition" "monitoring" {
     },
     {
       name  = "grafana"
-      image = "grafana/grafana:latest"
+      image = var.grafana_image
       essential = false
       portMappings = [
         {
