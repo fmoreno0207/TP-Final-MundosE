@@ -66,7 +66,7 @@ resource "aws_ecs_task_definition" "monitoring" {
       environment = [
         { name = "GF_SECURITY_ADMIN_USER", value = "admin" },
         { name = "GF_SECURITY_ADMIN_PASSWORD", value = "admin123" },
-        #{ name = "GF_SERVER_ROOT_URL", value = "http://localhost:3000" },
+        { name = "GF_SERVER_ROOT_URL", value = "http://localhost:3000" },
         { name = "GF_INSTALL_PLUGINS", value = "grafana-clock-panel,grafana-piechart-panel" }
       ]
     }
