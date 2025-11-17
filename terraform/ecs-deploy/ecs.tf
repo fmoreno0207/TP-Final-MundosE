@@ -41,6 +41,16 @@ resource "aws_ecs_task_definition" "monitoring" {
           protocol      = "tcp"
         }
       ]
+      extraHosts = [
+        {
+          hostname  = "app"
+          ipAddress = "127.0.0.1"
+        },
+        {
+          hostname  = "prom"
+          ipAddress = "127.0.0.1"
+        }
+      ]
       command = [
         "--config.file=/etc/prometheus/prometheus.yml",
         "--storage.tsdb.path=/prometheus"
