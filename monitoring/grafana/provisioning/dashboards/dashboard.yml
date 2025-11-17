@@ -1,14 +1,3 @@
-# apiVersion: 1
-
-# providers:
-#   - name: "auto-dashboards"
-#     type: file
-#     disableDeletion: false
-#     updateIntervalSeconds: 10
-#     allowUiUpdates: true
-#     editable: true
-#     options:
-#       path: /etc/grafana/provisioning/dashboards
 apiVersion: 1
 providers:
   - name: 'TechStore'
