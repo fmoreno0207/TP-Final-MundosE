@@ -1,7 +1,8 @@
 {
   "id": null,
-  "uid": "node-full",
-  "title": "Dashboard tech-store",
+  "uid": "tech-store-full",
+  "title": "TechStore - Full App Monitoring",
+  "tags": ["techstore", "app", "nodejs"],
   "timezone": "browser",
   "schemaVersion": 36,
   "version": 1,
@@ -9,142 +10,67 @@
   "panels": [
     {
       "type": "stat",
-      "title": "CPU Uso (%)",
-      "datasource": "Prometheus",
-      "id": 1,
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "title": "CPU User (s)",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
       "targets": [
         {
-          "expr": "100 - avg(irate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100",
-          "legendFormat": "CPU"
+          "expr": "TechStore_process_cpu_user_seconds_total",
+          "refId": "A"
         }
       ]
     },
     {
       "type": "stat",
-      "title": "RAM Uso (%)",
-      "datasource": "Prometheus",
-      "id": 2,
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "title": "CPU System (s)",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 4 },
       "targets": [
         {
-          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100"
+          "expr": "TechStore_process_cpu_system_seconds_total",
+          "refId": "A"
         }
       ]
     },
     {
       "type": "stat",
-      "title": "Load Average (1m)",
-      "datasource": "Prometheus",
-      "id": 3,
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "title": "RAM (RSS bytes)",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
       "targets": [
         {
-          "expr": "node_load1",
-          "legendFormat": "Load1"
-        }
-      ]
-    },
-    {
-      "type": "graph",
-      "title": "Uso de CPU por modo",
-      "datasource": "Prometheus",
-      "id": 4,
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
-      "targets": [
-        {
-          "expr": "rate(node_cpu_seconds_total{mode!=\"idle\"}[2m])",
-          "legendFormat": "{{mode}}"
-        }
-      ]
-    },
-    {
-      "type": "graph",
-      "title": "Memoria RAM (Total vs Libre)",
-      "datasource": "Prometheus",
-      "id": 5,
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
-      "targets": [
-        {
-          "expr": "node_memory_MemTotal_bytes",
-          "legendFormat": "Total RAM"
-        },
-        {
-          "expr": "node_memory_MemAvailable_bytes",
-          "legendFormat": "Mem Disponible"
-        }
-      ]
-    },
-    {
-      "type": "graph",
-      "title": "Uso de Disco (por filesystem)",
-      "datasource": "Prometheus",
-      "id": 6,
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
-      "targets": [
-        {
-          "expr": "(node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes * 100",
-          "legendFormat": "{{mountpoint}}"
-        }
-      ]
-    },
-    {
-      "type": "graph",
-      "title": "I/O Disco – Lectura/Escritura",
-      "datasource": "Prometheus",
-      "id": 7,
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
-      "targets": [
-        {
-          "expr": "rate(node_disk_read_bytes_total[1m])",
-          "legendFormat": "Read {{device}}"
-        },
-        {
-          "expr": "rate(node_disk_written_bytes_total[1m])",
-          "legendFormat": "Write {{device}}"
-        }
-      ]
-    },
-    {
-      "type": "graph",
-      "title": "Red – RX/TX",
-      "datasource": "Prometheus",
-      "id": 8,
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
-      "targets": [
-        {
-          "expr": "rate(node_network_receive_bytes_total[1m])",
-          "legendFormat": "RX {{device}}"
-        },
-        {
-          "expr": "rate(node_network_transmit_bytes_total[1m])",
-          "legendFormat": "TX {{device}}"
+          "expr": "TechStore_process_resident_memory_bytes",
+          "refId": "A"
         }
       ]
     },
     {
       "type": "stat",
-      "title": "Uptime (segundos)",
-      "datasource": "Prometheus",
-      "id": 9,
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 44 },
+      "title": "Virtual Memory (bytes)",
+      "gridPos": { "x": 0, "y": 4, "w": 8, "h": 4 },
       "targets": [
         {
-          "expr": "node_time_seconds - node_boot_time_seconds",
-          "legendFormat": "Uptime"
+          "expr": "TechStore_process_virtual_memory_bytes",
+          "refId": "A"
         }
       ]
     },
     {
-      "type": "graph",
-      "title": "Procesos en ejecución",
-      "datasource": "Prometheus",
-      "id": 10,
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "type": "timeseries",
+      "title": "Event Loop Lag (seconds)",
+      "gridPos": { "x": 8, "y": 4, "w": 16, "h": 8 },
       "targets": [
         {
-          "expr": "node_processes_running",
-          "legendFormat": "Procesos activos"
+          "expr": "TechStore_nodejs_eventloop_lag_seconds",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Heap Usage (bytes)",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "TechStore_process_heap_bytes",
+          "refId": "A"
         }
       ]
     }
