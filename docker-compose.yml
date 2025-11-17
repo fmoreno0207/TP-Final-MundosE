@@ -1,28 +1,19 @@
-name: devops-proyecto-integrador
 services:
-  frontend:
-    build: .
-    container_name: nextjs_app
-    ports:
-      - "3000:3000"
-    networks:
-      - monitoring
-    restart: always
-
   prometheus:
-    image: prom/prometheus:latest
+    image: fmoreno/prometheus:latest   # 👈 tu imagen personalizada
     container_name: prometheus
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
+      - --config.file=/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
     networks:
       - monitoring
+    restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    image: fmoreno/grafana:latest     # 👈 tu imagen personalizada
     container_name: grafana
     environment:
       - GF_SECURITY_ADMIN_USER=admin
@@ -32,17 +23,10 @@ services:
       - "9500:3000"
     depends_on:
       - prometheus
-      - frontend
     networks:
       - monitoring
-    volumes:
-      # Persistencia de datos de Grafana
-      - grafana-data:/var/lib/grafana
-      # Auto-provisión de Prometheus como data source
-      - ./provisioning:/etc/grafana/provisioning
+    restart: unless-stopped
 
 networks:
   monitoring:
-
-volumes:
-  grafana-data:
+    driver: bridge

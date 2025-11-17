@@ -38,8 +38,8 @@ jobs:
       - name: Build and push Grafana image
         uses: docker/build-push-action@v6
         with:
-          context: ./grafana
-          file: ./grafana/Dockerfile
+          context: ./monitoring/grafana
+          file: ./monitoring/grafana/Dockerfile
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/grafana-custom:latest
@@ -49,8 +49,8 @@ jobs:
       - name: Build and push Prometheus image
         uses: docker/build-push-action@v6
         with:
-          context: ./prometheus
-          file: ./prometheus/Dockerfile
+          context: .monitoring/prometheus
+          file: ./monitoring/prometheus/Dockerfile
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/prometheus-custom:latest
