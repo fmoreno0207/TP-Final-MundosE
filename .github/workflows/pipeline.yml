@@ -69,7 +69,7 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME }}-frontend:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
 
       # ====================================
       # 6. BUILD & PUSH GRAFANA (solo si cambia)
@@ -83,7 +83,7 @@ jobs:
           file: ./monitoring/grafana/Dockerfile
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME }}-grafana:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-grafana:latest
 
       # ====================================
       # 7. BUILD & PUSH PROMETHEUS (solo si cambia)
@@ -97,7 +97,7 @@ jobs:
           file: ./monitoring/prometheus/Dockerfile
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME }}-prometheus:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-prometheus:latest
 
       # ------------------------------------
       # 8. ¿Hubo algún cambio en alguna imagen?
