@@ -1,4 +1,4 @@
-name: Build and Push Docker Images App-Grafana-Prometheus
+name: Build and Push Docker Images
 
 on:
   push:
@@ -13,30 +13,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check changes in repo
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'Dockerfile'
+              - 'src/**'
+              - 'public/**'
+              - 'components/**'
+            grafana:
+              - 'monitoring/grafana/**'
+            prometheus:
+              - 'monitoring/prometheus/**'
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ================================
-      # FRONTEND
-      # ================================
-      - name: Detect changes in Frontend
-        id: frontend_changed
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            frontend:
-              - 'Dockerfile'
-              - '**/*.js'
-              - '**/*.ts'
-              - '**/*.tsx'
-              - 'public/**'
-              - 'src/**'
-
+      # ------------------------
+      # FRONTEND (solo si cambia)
+      # ------------------------
       - name: Build and push Frontend image
-        if: steps.frontend_changed.outputs.frontend == 'true'
+        if: steps.changes.outputs.frontend == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -46,19 +48,11 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/nextjs-frontend:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/nextjs-frontend:${{ github.run_number }}
 
-      # ================================
-      # GRAFANA
-      # ================================
-      - name: Detect changes in Grafana
-        id: grafana_changed
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            grafana:
-              - 'monitoring/grafana/**'
-
+      # ------------------------
+      # GRAFANA (solo si cambia)
+      # ------------------------
       - name: Build and push Grafana image
-        if: steps.grafana_changed.outputs.grafana == 'true'
+        if: steps.changes.outputs.grafana == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ./monitoring/grafana
@@ -68,19 +62,11 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/grafana-custom:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/grafana-custom:${{ github.run_number }}
 
-      # ================================
-      # PROMETHEUS
-      # ================================
-      - name: Detect changes in Prometheus
-        id: prometheus_changed
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            prometheus:
-              - 'monitoring/prometheus/**'
-
+      # ------------------------
+      # PROMETHEUS (solo si cambia)
+      # ------------------------
       - name: Build and push Prometheus image
-        if: steps.prometheus_changed.outputs.prometheus == 'true'
+        if: steps.changes.outputs.prometheus == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ./monitoring/prometheus
