@@ -1,4 +1,4 @@
-name: Build and Push Docker Images
+name: Build and Deploy to ECS using ECR
 
 on:
   push:
@@ -6,14 +6,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # ------------------------------------
+      # 1. Checkout del código
+      # ------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check changes in repo
+      # ------------------------------------
+      # 2. Detectar cambios por carpetas
+      # ------------------------------------
+      - name: Detect changes
         id: changes
         uses: dorny/paths-filter@v3
         with:
@@ -22,56 +28,106 @@ jobs:
               - 'Dockerfile'
               - 'src/**'
               - 'public/**'
-              - 'components/**'
             grafana:
               - 'monitoring/grafana/**'
             prometheus:
               - 'monitoring/prometheus/**'
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # DEBUG (opcional)
+      - name: Debug cambios
+        run: |
+          echo "Frontend: ${{ steps.changes.outputs.frontend }}"
+          echo "Grafana: ${{ steps.changes.outputs.grafana }}"
+          echo "Prometheus: ${{ steps.changes.outputs.prometheus }}"
 
-      # ------------------------
-      # FRONTEND (solo si cambia)
-      # ------------------------
-      - name: Build and push Frontend image
+      # ------------------------------------
+      # 3. Credenciales AWS
+      # ------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # ------------------------------------
+      # 4. Login a Amazon ECR
+      # ------------------------------------
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ====================================
+      # 5. BUILD & PUSH FRONTEND (solo si cambia)
+      # ====================================
+      - name: Build & Push Frontend
         if: steps.changes.outputs.frontend == 'true'
+        id: build_frontend
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/nextjs-frontend:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/nextjs-frontend:${{ github.run_number }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME }}-frontend:latest
 
-      # ------------------------
-      # GRAFANA (solo si cambia)
-      # ------------------------
-      - name: Build and push Grafana image
+      # ====================================
+      # 6. BUILD & PUSH GRAFANA (solo si cambia)
+      # ====================================
+      - name: Build & Push Grafana
         if: steps.changes.outputs.grafana == 'true'
+        id: build_grafana
         uses: docker/build-push-action@v6
         with:
           context: ./monitoring/grafana
           file: ./monitoring/grafana/Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/grafana-custom:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/grafana-custom:${{ github.run_number }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME }}-grafana:latest
 
-      # ------------------------
-      # PROMETHEUS (solo si cambia)
-      # ------------------------
-      - name: Build and push Prometheus image
+      # ====================================
+      # 7. BUILD & PUSH PROMETHEUS (solo si cambia)
+      # ====================================
+      - name: Build & Push Prometheus
         if: steps.changes.outputs.prometheus == 'true'
+        id: build_prometheus
         uses: docker/build-push-action@v6
         with:
           context: ./monitoring/prometheus
           file: ./monitoring/prometheus/Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/prometheus-custom:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/prometheus-custom:${{ github.run_number }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME }}-prometheus:latest
+
+      # ------------------------------------
+      # 8. ¿Hubo algún cambio en alguna imagen?
+      # ------------------------------------
+      - name: Decide if update is required
+        id: decide
+        run: |
+          FRONT=${{ steps.changes.outputs.frontend }}
+          GRAF=${{ steps.changes.outputs.grafana }}
+          PROM=${{ steps.changes.outputs.prometheus }}
+
+          if [ "$FRONT" = "true" ] || [ "$GRAF" = "true" ] || [ "$PROM" = "true" ]; then
+            echo "update=true" >> $GITHUB_OUTPUT
+          else
+            echo "update=false" >> $GITHUB_OUTPUT
+          fi
+
+      # ------------------------------------
+      # 9. Redeploy ECS SOLO si hubo cambios
+      # ------------------------------------
+      - name: Force new ECS deployment
+        if: steps.decide.outputs.update == 'true'
+        run: |
+          aws ecs update-service \
+            --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
+            --service ${{ secrets.ECS_SERVICE_NAME }} \
+            --force-new-deployment
+
+      # ------------------------------------
+      # 10. Mensaje final
+      # ------------------------------------
+      - name: Done
+        run: echo "Pipeline completado!"
