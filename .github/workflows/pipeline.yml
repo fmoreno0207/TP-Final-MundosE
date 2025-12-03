@@ -115,12 +115,6 @@ jobs:
             echo "update=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Debug ECS names (decoded)
-        run: |
-          echo "Cluster secret length: $(echo -n '${{ secrets.ECS_CLUSTER_NAME }}' | wc -c)"
-          echo "Service secret length: $(echo -n '${{ secrets.ECS_SERVICE_NAME }}' | wc -c)"
-
-
       # ------------------------------------
       # 9. Redeploy ECS SOLO si hubo cambios
       # ------------------------------------
