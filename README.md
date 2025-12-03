@@ -1,265 +1,310 @@
-Trabajo Final MundosE
-Deploy de aplicación Next.js + Grafana + Prometheus en AWS ECS con Terraform y CI/CD GitHub Actions
+# Trabajo Final Diplmatura DevOps  
+## Deploy de aplicación Next.js + Grafana + Prometheus en AWS ECS con Terraform y CI/CD GitHub Actions  
+**Autor:** Fernando Moreno y Mariano 
 
-Autor: Fernando Moreno
+---
 
-1. Introducción
+## 0. Inicialización del Backend de Terraform (S3 + DynamoDB)
 
-Este proyecto implementa:
+Antes de crear cualquier recurso en AWS (VPC, ECS, ECR, etc.) es necesario configurar
+el backend remoto de Terraform para almacenar el estado (`terraform.tfstate`) de forma
+segura y centralizada.
 
-Infraestructura como código (Terraform)
+### ¿Por qué es necesario un backend remoto?
 
-Pipelines de CI/CD con GitHub Actions
+Terraform guarda el estado de la infraestructura (qué existe, qué cambió, qué debe
+actualizarse). Guardarlo localmente es inseguro y rompe un pipeline CI/CD.
 
-Contenedores desplegados en AWS ECS Fargate
+Usar un backend remoto permite:
 
-Registro de imágenes en Amazon ECR
+- Almacenar el estado en S3 (seguro y duradero)
+- Evitar corrupción del estado
+- Permitir CI/CD sin problemas
+- Soportar trabajos colaborativos
+- Hacer locking del estado con DynamoDB
 
-Observabilidad mediante Prometheus y Grafana
+### Estructura utilizada
 
-Escaneo de seguridad con ESLint, Snyk y generación de SBOM
+El backend se crea en esta carpeta:
 
-El despliegue se realiza automáticamente ante un push en la rama main.
-
-2. Arquitectura del Proyecto
-                         +----------------------+
-                         |     GitHub Repo      |
-                         +----------+-----------+
-                                    |
-                                    | push/main
-                                    v
-                          +-----------------------+
-                          |     GitHub Actions    |
-                          |  - ESLint             |
-                          |  - Snyk               |
-                          |  - SBOM               |
-                          |  - Docker Build       |
-                          |  - ECS Deploy         |
-                          +----------+------------+
-                                    |
-                                    v
-                         +--------------------------+
-                         |    Amazon ECR Registry   |
-                         +-----------+--------------+
-                                     |
-                                     v
-                           +---------------------+
-                           |   AWS ECS Fargate   |
-                           | - Frontend (Next)   |
-                           | - Grafana           |
-                           | - Prometheus        |
-                           +-----------+---------+
-                                       |
-                                       v
-                           +---------------------+
-                           |   CloudWatch Logs   |
-                           +---------------------+
-3. Tecnologías Utilizadas
-Infraestructura
-
-AWS ECS Fargate
-
-AWS ECR
-
-AWS VPC + Subnets + Security Groups
-
-AWS IAM Roles
-
-Terraform
-
-Aplicación
-
-Next.js 14
-
-React 18
-
-TailwindCSS
-
-Observabilidad
-
-Grafana (dashboard personalizado)
-
-Prometheus (scraping + métricas personalizadas)
-
-Seguridad
-
-ESLint
-
-Snyk (dependencias + Docker)
-
-SBOM CycloneDX
-
-DevOps
-
-GitHub Actions
-
-Docker Buildx
-
-4. Infraestructura – Terraform
-
-La infraestructura se encuentra en:
-
-terraform/ecs-deploy/
-
+```
+terraform/backend-bootstrap/
+```
 
 Incluye:
 
-VPC
+- main.tf
+- provider.tf
+- variables.tf
 
-Subredes
+Este módulo crea:
 
-Security Groups
+1. Un bucket S3 para guardar el estado (`tfstate`)
+2. Una tabla DynamoDB para el bloqueo del estado
+3. Versionado habilitado en el bucket
+4. Encriptación SSE-S3
 
-Repositorios ECR
+### Comandos para inicializar el backend
 
-ECS Cluster
+1. Ubicarse en la carpeta:
 
-ECS Services (Frontend, Grafana, Prometheus)
+```
+cd terraform/backend-bootstrap
+```
 
-Task Definitions
+2. Inicializar e implementar el backend:
 
-Roles IAM
-
-Variables y outputs
-
-Comandos principales
+```
 terraform init
 terraform apply
+```
 
+3. Copiar los valores generados en:
 
-Salida esperada: URL pública del Load Balancer y nombres de servicios ECS.
+```
+terraform/ecs-deploy/backend.tf
+```
 
-5. Pipeline CI/CD – GitHub Actions
+Ejemplo:
+
+```
+terraform {
+  backend "s3" {
+    bucket         = "nombre-bucket-tfstate"
+    key            = "ecs-deploy/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "nombre-tabla-lock"
+    encrypt        = true
+  }
+}
+```
+
+---
+
+## 1. Introducción
+
+Este proyecto implementa:
+
+- Infraestructura como código (Terraform)  
+- Pipeline CI/CD con GitHub Actions  
+- Contenedores desplegados en AWS ECS Fargate  
+- Registro de imágenes en Amazon ECR  
+- Observabilidad mediante Prometheus y Grafana  
+- Análisis de seguridad con ESLint y Snyk  
+- Generación de SBOM (CycloneDX)
+
+El despliegue se realiza automáticamente ante un push a la rama `main`.
+
+---
+
+## 2. Arquitectura del Proyecto
+
+```
+                   ┌────────────────────────┐
+                   │      GitHub Repo        │
+                   └───────────┬────────────┘
+                               │ push/main
+                               ▼
+                   ┌────────────────────────┐
+                   │     GitHub Actions      │
+                   │  - ESLint               │
+                   │  - Snyk                 │
+                   │  - SBOM                 │
+                   │  - Docker Build         │
+                   │  - Deploy ECS           │
+                   └───────────┬────────────┘
+                               │
+                               ▼
+                  ┌─────────────────────────┐
+                  │   Amazon ECR Registry    │
+                  └───────────┬─────────────┘
+                              │
+                              ▼
+         ┌─────────────────────────────────────────────┐
+         │                 AWS ECS Fargate             │
+         │  - Frontend (Next.js)                       │
+         │  - Grafana                                  │
+         │  - Prometheus                               │
+         └──────────────────────────┬──────────────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────┐
+                         │ CloudWatch Logs  │
+                         └──────────────────┘
+```
+
+---
+
+## 3. Tecnologías Utilizadas
+
+### Infraestructura  
+- AWS ECS Fargate  
+- AWS ECR  
+- AWS VPC, Subnets, Security Groups  
+- AWS IAM Roles  
+- Terraform  
+
+### Aplicación  
+- Next.js 14  
+- React 18  
+- TailwindCSS  
+
+### Observabilidad  
+- Grafana  
+- Prometheus  
+
+### Seguridad  
+- ESLint  
+- Snyk  
+- SBOM CycloneDX  
+
+---
+
+## 4. Infraestructura con Terraform
+
+Todo el código se encuentra en:
+
+```
+terraform/ecs-deploy/
+```
+
+Componentes:
+
+- VPC / Subnets  
+- Security Groups  
+- Repositorios ECR  
+- Cluster ECS  
+- Servicios ECS  
+- Task Definitions  
+- Roles IAM  
+
+### Comandos principales
+
+```
+terraform init
+terraform apply
+```
+
+---
+
+## 5. CI/CD con GitHub Actions
 
 El pipeline ejecuta:
 
-Detección de cambios por carpeta
+1. Detección de cambios por carpetas  
+2. ESLint (solo si hay cambios en el frontend)  
+3. Snyk (npm + imágenes Docker)  
+4. Generación de SBOM  
+5. Build & Push a ECR  
+6. Redeploy automático en ECS  
 
-ESLint (solo si hay cambios en frontend)
+Ejemplo comando usado por el pipeline:
 
-Snyk (dependencias y Docker)
+```
+aws ecs update-service --cluster <name> --service <name> --force-new-deployment
+```
 
-Generación de SBOM
+---
 
-Build & Push a ECR
+## 6. Seguridad (ESLint + Snyk + SBOM)
 
-Deploy automático en ECS via update-service
+### 6.1 ESLint
 
-Ejemplo del comando de redeploy:
+Corre análisis estático del código:
 
-aws ecs update-service --cluster x --service y --force-new-deployment
-
-6. Seguridad – ESLint, Snyk, SBOM
-ESLint
-
-Analiza el código del frontend:
-
+```
 npm run lint
+```
 
+### 6.2 Snyk – Dependencias
 
-Se ejecuta automáticamente en el pipeline solo cuando hay cambios.
-
-Snyk
-
-Escanea dependencias npm:
-
+```
 snyk test --severity-threshold=high
+```
 
+### 6.3 Snyk – Docker
 
-Escanea la imagen Docker:
-
+```
 snyk test --docker image:latest --severity-threshold=high
+```
 
+### 6.4 SBOM CycloneDX
 
-En CI/CD se usa:
+```
+npx @cyclonedx/cyclonedx-npm -o sbom.json
+```
 
-|| true
+---
 
-
-para evitar que el pipeline falle por vulnerabilidades externas no corregibles.
-
-SBOM (CycloneDX)
-
-Se genera con:
-
-npx cyclonedx-bom -o sbom.json
-
-
-El pipeline guarda el SBOM como artefacto descargable.
-
-7. Monitoring – Grafana y Prometheus
+## 7. Monitoring – Prometheus & Grafana
 
 Prometheus:
 
-Expone métricas desde /api/metrics (Next.js)
-
-Scrapea targets definidos en prometheus.yml
+- Scrapea métricas de Next.js  
 
 Grafana:
 
-Se despliega como servicio ECS independiente
+- Dashboards preconfigurados en `monitoring/grafana/provisioning`
 
-Incluye dashboards preconfigurados (JSON en monitoring/grafana/provisioning)
+---
 
-8. Capturas Requeridas
+## 8. Capturas Requeridas
 
-Agregar estas capturas en la entrega final:
+- Pipeline ejecutándose  
+- Servicios en ECS  
+- Repositorios en ECR  
+- Dashboard de Grafana  
+- Archivo SBOM generado  
 
-8.1 Pipeline corriendo
-[Imagen del workflow ejecutándose]
+---
 
-8.2 Servicios en ECS
-[Imagen del cluster ECS y tareas]
+## 9. Costos Aproximados
 
-8.3 Repositorios ECR
-[Imagen mostrando imágenes latest]
+| Servicio | Costo estimado |
+|---------|-----------------|
+| ECS Fargate | 5–9 USD |
+| ECR | 0.10 USD/GB |
+| CloudWatch Logs | 0.50–1 USD |
+| Total | 6–12 USD |
 
-8.4 Dashboard en Grafana
-[Imagen del dashboard de métricas]
+---
 
-8.5 SBOM generado
-[Imagen mostrando sbom.json]
+## 10. Ejecución del Proyecto
 
-9. Costos Aproximados en AWS
+### 1. Inicializar backend
 
-| Servicio              | Costo estimado mensual |
-| --------------------- | ---------------------- |
-| ECS Fargate (3 tasks) | 5–9 USD                |
-| ECR                   | 0.10 USD por GB        |
-| CloudWatch Logs       | 0.50–1 USD             |
-| VPC / SG              | Sin costo              |
-| Total                 | 6–12 USD               |
+```
+cd terraform/backend-bootstrap
+terraform apply
+```
 
-10. Cómo Ejecutar el Proyecto
-1. Provisionar infraestructura
+### 2. Provisionar infraestructura ECS
+
+```
 cd terraform/ecs-deploy
 terraform init
 terraform apply
+```
 
-2. Push a la rama main
+### 3. Ejecutar CI/CD (push a main)
 
-GitHub Actions:
+```
+git add .
+git commit -m "deploy"
+git push
+```
 
-Construye imágenes
+### 4. Acceso a la aplicación
 
-Corre ESLint
+Obtener URL del Load Balancer:
 
-Corre Snyk
+```
+terraform output
+```
 
-Genera SBOM
+---
 
-Publica imágenes
+## 11. capturas 
+![Grafana](Scree-grafana.png)
+![Prometheus](Screeen-prometheus.png)
 
-Actualiza ECS
-
-3. Ver aplicación
-
-Abrir la URL pública del Load Balancer (output de Terraform).
-
-11. Contribuciones
-
-Las mejoras y pull requests son bienvenidas.
-
-12. Licencia
-
-Trabajo práctico educativo para MundosE.
