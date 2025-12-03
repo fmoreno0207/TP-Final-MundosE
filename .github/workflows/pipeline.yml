@@ -115,6 +115,11 @@ jobs:
             echo "update=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Debug ECS names
+        run: |
+          echo "Cluster from secrets: '${{ secrets.ECS_CLUSTER_NAME }}'"
+          echo "Service from secrets: '${{ secrets.ECS_SERVICE_NAME }}'"
+
       # ------------------------------------
       # 9. Redeploy ECS SOLO si hubo cambios
       # ------------------------------------
