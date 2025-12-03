@@ -57,6 +57,31 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # ------------------------------------
+      # ESLint (Solo si hay cambios en frontend)
+      # ------------------------------------
+      - name: Install deps for lint
+        if: steps.changes.outputs.frontend == 'true'
+        run: npm ci
+
+      - name: Run ESLint
+        if: steps.changes.outputs.frontend == 'true'
+        run: npm run lint
+
+      # ------------------------------------
+      # Snyk (npm dependency security scan)
+      # ------------------------------------
+      - name: Install Snyk
+        run: npm install -g snyk
+
+      - name: Snyk test (npm dependencies)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk auth $SNYK_TOKEN
+          snyk test --severity-threshold=high
+
+
       # ====================================
       # 5. BUILD & PUSH FRONTEND (solo si cambia)
       # ====================================
@@ -70,6 +95,19 @@ jobs:
           push: true
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
+
+      # ------------------------------------
+      # Snyk escaneo de imagenes de Docker
+      # ------------------------------------
+      - name: Snyk Docker scan
+        if: steps.changes.outputs.frontend == 'true'
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk auth $SNYK_TOKEN
+          snyk test --docker \
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest \
+            --severity-threshold=high
 
       # ====================================
       # 6. BUILD & PUSH GRAFANA (solo si cambia)
