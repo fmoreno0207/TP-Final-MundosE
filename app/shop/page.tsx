@@ -112,7 +112,7 @@ export default function ShopPage() {
         {/* Main Content */}
         <main className="flex-1">
           <div className="mb-6">
-            <h2 className="text-3xl font-bold mb-2">Nuestros Productos</h2>
+            <h2 className="text-3xl font-bold mb-2">Nuestros Productos Ofertas</h2>
             <p className="text-muted-foreground">
               {filteredProducts.length}{" "}
               {filteredProducts.length === 1 ? "producto encontrado" : "productos encontrados"}
