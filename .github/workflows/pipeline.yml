@@ -25,9 +25,7 @@ jobs:
         with:
           filters: |
             frontend:
-              - 'Dockerfile'
-              - 'src/**'
-              - 'public/**'
+              - 'frontend/**'
             grafana:
               - 'monitoring/grafana/**'
             prometheus:
@@ -58,14 +56,16 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       # ------------------------------------
-      # ESLint (Solo si hay cambios en frontend)
+      # ESLint (solo si hay cambios en frontend)
       # ------------------------------------
       - name: Install deps for lint
         if: steps.changes.outputs.frontend == 'true'
+        working-directory: ./frontend
         run: npm ci
 
       - name: Run ESLint
         if: steps.changes.outputs.frontend == 'true'
+        working-directory: ./frontend
         run: npm run lint
 
       # ------------------------------------
@@ -77,10 +77,10 @@ jobs:
       - name: Snyk test (npm dependencies)
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        working-directory: ./frontend
         run: |
-          snyk auth $SNYK_TOKEN
+          snyk auth "$SNYK_TOKEN"
           snyk test --severity-threshold=high
-
 
       # ====================================
       # 5. BUILD & PUSH FRONTEND (solo si cambia)
@@ -90,8 +90,8 @@ jobs:
         id: build_frontend
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./frontend
+          file: ./frontend/Dockerfile
           push: true
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
@@ -104,7 +104,7 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          snyk auth $SNYK_TOKEN
+          snyk auth "$SNYK_TOKEN"
           snyk test --docker \
             ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest \
             --severity-threshold=high || true
@@ -148,9 +148,9 @@ jobs:
           PROM=${{ steps.changes.outputs.prometheus }}
 
           if [ "$FRONT" = "true" ] || [ "$GRAF" = "true" ] || [ "$PROM" = "true" ]; then
-            echo "update=true" >> $GITHUB_OUTPUT
+            echo "update=true" >> "$GITHUB_OUTPUT"
           else
-            echo "update=false" >> $GITHUB_OUTPUT
+            echo "update=false" >> "$GITHUB_OUTPUT"
           fi
 
       # ------------------------------------

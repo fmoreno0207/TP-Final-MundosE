@@ -9,7 +9,7 @@ COPY package*.json ./
 RUN npm config set registry https://registry.npmjs.org/ && npm ci
 
 # Copia el resto del código
-COPY . .
+COPY frontend/. .
 
 # Genera el build de producción
 RUN npm run build
