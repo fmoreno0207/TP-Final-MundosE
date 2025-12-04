@@ -1,76 +1,39 @@
-# Trabajo Final Diplmatura DevOps  
-## Deploy de aplicación Next.js + Grafana + Prometheus en AWS ECS con Terraform y CI/CD GitHub Actions  
-**Autor:** Fernando Moreno y Mariano 
+# Trabajo Final MundosE  
+## Deploy Profesional de Aplicación Next.js + Grafana + Prometheus en AWS ECS/Fargate con Terraform y CI/CD GitHub Actions  
+**Autor:** Fernando Moreno  
 
 ---
 
-## 0. Inicialización del Backend de Terraform (S3 + DynamoDB)
+# 0. Backend Remoto de Terraform (S3 + DynamoDB)
 
-Antes de crear cualquier recurso en AWS (VPC, ECS, ECR, etc.) es necesario configurar
-el backend remoto de Terraform para almacenar el estado (`terraform.tfstate`) de forma
-segura y centralizada.
+Antes de desplegar cualquier recurso en AWS, se configura un **backend remoto** donde Terraform guardará su estado (`terraform.tfstate`) evitando corrupción, habilitando CI/CD y permitiendo locking para evitar ejecuciones simultáneas.
 
-### ¿Por qué es necesario un backend remoto?
-
-Terraform guarda el estado de la infraestructura (qué existe, qué cambió, qué debe
-actualizarse). Guardarlo localmente es inseguro y rompe un pipeline CI/CD.
-
-Usar un backend remoto permite:
-
-- Almacenar el estado en S3 (seguro y duradero)
-- Evitar corrupción del estado
-- Permitir CI/CD sin problemas
-- Soportar trabajos colaborativos
-- Hacer locking del estado con DynamoDB
-
-### Estructura utilizada
-
-El backend se crea en esta carpeta:
+Ubicación del módulo:
 
 ```
 terraform/backend-bootstrap/
 ```
 
-Incluye:
+El módulo crea:
 
-- main.tf
-- provider.tf
-- variables.tf
+- Bucket S3 con versionado  
+- Tabla DynamoDB para locking  
+- Encriptación SSE-S3  
 
-Este módulo crea:
+### Inicialización
 
-1. Un bucket S3 para guardar el estado (`tfstate`)
-2. Una tabla DynamoDB para el bloqueo del estado
-3. Versionado habilitado en el bucket
-4. Encriptación SSE-S3
-
-### Comandos para inicializar el backend
-
-1. Ubicarse en la carpeta:
-
-```
+```bash
 cd terraform/backend-bootstrap
-```
-
-2. Inicializar e implementar el backend:
-
-```
 terraform init
 terraform apply
 ```
 
-3. Copiar los valores generados en:
+Luego el archivo `terraform/ecs-deploy/backend.tf` debe configurarse así:
 
-```
-terraform/ecs-deploy/backend.tf
-```
-
-Ejemplo:
-
-```
+```hcl
 terraform {
   backend "s3" {
-    bucket         = "nombre-bucket-tfstate"
+    bucket         = "nombre-del-bucket"
     key            = "ecs-deploy/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "nombre-tabla-lock"
@@ -81,230 +44,288 @@ terraform {
 
 ---
 
-## 1. Introducción
+# 1. Introducción
 
-Este proyecto implementa:
+Este trabajo implementa un **entorno de despliegue profesional** compuesto por:
 
 - Infraestructura como código (Terraform)  
-- Pipeline CI/CD con GitHub Actions  
-- Contenedores desplegados en AWS ECS Fargate  
-- Registro de imágenes en Amazon ECR  
-- Observabilidad mediante Prometheus y Grafana  
-- Análisis de seguridad con ESLint y Snyk  
-- Generación de SBOM (CycloneDX)
+- Pipeline CI/CD automatizado en GitHub Actions  
+- Contenedores Docker ejecutándose en AWS ECS Fargate  
+- Registro de imágenes en ECR  
+- Observabilidad completa con Prometheus + Grafana  
+- Seguridad mediante ESLint, Snyk y SBOM (CycloneDX)  
+- Deploy automático ante cambios detectados
 
-El despliegue se realiza automáticamente ante un push a la rama `main`.
-
----
-
-## 2. Arquitectura del Proyecto
-
-```
-                   ┌────────────────────────┐
-                   │      GitHub Repo        │
-                   └───────────┬────────────┘
-                               │ push/main
-                               ▼
-                   ┌────────────────────────┐
-                   │     GitHub Actions      │
-                   │  - ESLint               │
-                   │  - Snyk                 │
-                   │  - SBOM                 │
-                   │  - Docker Build         │
-                   │  - Deploy ECS           │
-                   └───────────┬────────────┘
-                               │
-                               ▼
-                  ┌─────────────────────────┐
-                  │   Amazon ECR Registry    │
-                  └───────────┬─────────────┘
-                              │
-                              ▼
-         ┌─────────────────────────────────────────────┐
-         │                 AWS ECS Fargate             │
-         │  - Frontend (Next.js)                       │
-         │  - Grafana                                  │
-         │  - Prometheus                               │
-         └──────────────────────────┬──────────────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────┐
-                         │ CloudWatch Logs  │
-                         └──────────────────┘
-```
+El entorno está diseñado siguiendo buenas prácticas de DevOps y Cloud Engineering.
 
 ---
 
-## 3. Tecnologías Utilizadas
+# 2. Arquitectura General del Proyecto
 
-### Infraestructura  
+```
+                          ┌──────────────────────────┐
+                          │        GitHub Repo        │
+                          └─────────────┬─────────────┘
+                                        │ push/main
+                                        ▼
+                          ┌──────────────────────────┐
+                          │      GitHub Actions       │
+                          │  - ESLint                 │
+                          │  - Snyk NPM + Docker      │
+                          │  - SBOM (CycloneDX)       │
+                          │  - Docker Build & Push    │
+                          │  - ECS Deployment         │
+                          └─────────────┬─────────────┘
+                                        │
+                                        ▼
+                          ┌──────────────────────────┐
+                          │        Amazon ECR         │
+                          └─────────────┬─────────────┘
+                                        │
+                                        ▼
+                ┌────────────────────────────────────────────────┐
+                │                    AWS ECS Fargate             │
+                │                                                │
+                │  - Frontend (Next.js)                          │
+                │  - Grafana                                     │
+                │  - Prometheus                                  │
+                └──────────────────────────┬─────────────────────┘
+                                           │
+                                           ▼
+                                ┌──────────────────────┐
+                                │   CloudWatch Logs    │
+                                └──────────────────────┘
+```
+
+---
+
+# 3. Componentes Tecnológicos
+
+## Infraestructura  
 - AWS ECS Fargate  
 - AWS ECR  
-- AWS VPC, Subnets, Security Groups  
-- AWS IAM Roles  
+- AWS VPC (subredes públicas y privadas)  
+- AWS IAM (roles, políticas, ejecución de tareas)  
 - Terraform  
 
-### Aplicación  
+## Aplicación  
 - Next.js 14  
 - React 18  
 - TailwindCSS  
 
-### Observabilidad  
+## Seguridad  
+- ESLint  
+- Snyk (dependencias + contenedores)  
+- SBOM CycloneDX  
+
+## Observabilidad  
 - Grafana  
 - Prometheus  
 
-### Seguridad  
-- ESLint  
-- Snyk  
-- SBOM CycloneDX  
-
 ---
 
-## 4. Infraestructura con Terraform
+# 4. Infraestructura con Terraform
 
-Todo el código se encuentra en:
+La infraestructura principal se encuentra en:
 
 ```
 terraform/ecs-deploy/
 ```
 
-Componentes:
+Componentes desplegados:
 
-- VPC / Subnets  
+### Red
+- VPC  
+- Subnets privadas  
 - Security Groups  
-- Repositorios ECR  
-- Cluster ECS  
-- Servicios ECS  
+
+### Registro de contenedores
+- Repositorios ECR para:
+  - Frontend  
+  - Grafana  
+  - Prometheus  
+
+### Cluster y servicios ECS Fargate
 - Task Definitions  
-- Roles IAM  
+- Servicios ECS con auto-deploy  
+- Roles IAM para ejecución  
 
-### Comandos principales
+### Despliegue
 
-```
-terraform init
-terraform apply
-```
-
----
-
-## 5. CI/CD con GitHub Actions
-
-El pipeline ejecuta:
-
-1. Detección de cambios por carpetas  
-2. ESLint (solo si hay cambios en el frontend)  
-3. Snyk (npm + imágenes Docker)  
-4. Generación de SBOM  
-5. Build & Push a ECR  
-6. Redeploy automático en ECS  
-
-Ejemplo comando usado por el pipeline:
-
-```
-aws ecs update-service --cluster <name> --service <name> --force-new-deployment
-```
-
----
-
-## 6. Seguridad (ESLint + Snyk + SBOM)
-
-### 6.1 ESLint
-
-Corre análisis estático del código:
-
-```
-npm run lint
-```
-
-### 6.2 Snyk – Dependencias
-
-```
-snyk test --severity-threshold=high
-```
-
-### 6.3 Snyk – Docker
-
-```
-snyk test --docker image:latest --severity-threshold=high
-```
-
-### 6.4 SBOM CycloneDX
-
-```
-npx @cyclonedx/cyclonedx-npm -o sbom.json
-```
-
----
-
-## 7. Monitoring – Prometheus & Grafana
-
-Prometheus:
-
-- Scrapea métricas de Next.js  
-
-Grafana:
-
-- Dashboards preconfigurados en `monitoring/grafana/provisioning`
-
----
-
-## 8. Capturas Requeridas
-
-- Pipeline ejecutándose  
-- Servicios en ECS  
-- Repositorios en ECR  
-- Dashboard de Grafana  
-- Archivo SBOM generado  
-
----
-
-## 9. Costos Aproximados
-
-| Servicio | Costo estimado |
-|---------|-----------------|
-| ECS Fargate | 5–9 USD |
-| ECR | 0.10 USD/GB |
-| CloudWatch Logs | 0.50–1 USD |
-| Total | 6–12 USD |
-
----
-
-## 10. Ejecución del Proyecto
-
-### 1. Inicializar backend
-
-```
-cd terraform/backend-bootstrap
-terraform apply
-```
-
-### 2. Provisionar infraestructura ECS
-
-```
+```bash
 cd terraform/ecs-deploy
 terraform init
 terraform apply
 ```
 
-### 3. Ejecutar CI/CD (push a main)
+---
+
+# 5. Dockerfile Multi‑Stage (Frontend)
+
+El Dockerfile está dentro de:
 
 ```
+frontend/Dockerfile
+```
+
+Optimizado:
+
+```dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine
+WORKDIR /app
+
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+---
+
+# 6. Pipeline CI/CD – GitHub Actions
+
+El pipeline ejecuta:
+
+1. **Detección de cambios** (solo construye lo necesario)  
+2. **ESLint** (solo si cambia frontend/)  
+3. **Snyk NPM**  
+4. **Snyk Docker**  
+5. **Build & Push de imágenes a ECR**  
+6. **Force new deployment en ECS**  
+7. **Mensaje final de éxito**
+
+Actualiza automáticamente el servicio ECS sin detenciones.
+
+---
+
+# 7. Seguridad
+
+## 7.1 ESLint
+
+Analiza la calidad y estilo del código:
+
+```bash
+npm run lint
+```
+
+## 7.2 Snyk – Dependencias
+
+```bash
+snyk test --file=package.json --package-manager=npm
+```
+
+## 7.3 Snyk – Imágenes Docker
+
+```bash
+snyk test --docker repo/image:latest
+```
+
+## 7.4 SBOM (CycloneDX)
+
+Generación:
+
+```bash
+npx @cyclonedx/cyclonedx-npm -o sbom.json
+```
+
+---
+
+# 8. Observabilidad – Grafana y Prometheus
+
+Grafana incluye dashboards preconfigurados:
+
+```
+monitoring/grafana/provisioning/
+```
+
+Prometheus recopila métricas y expone `/metrics`.
+
+---
+
+# 9. Capturas del Proyecto
+
+### Dashboard Grafana
+![Grafana](Scree-grafana.png)
+
+### Vista Prometheus
+![Prometheus](Screeen-prometheus.png)
+
+---
+
+# 10. Costos Aproximados
+
+| Servicio             | Costo estimado |
+|---------------------|----------------|
+| ECS Fargate         | 5–9 USD        |
+| ECR Storage         | 0.10 USD/GB    |
+| CloudWatch Logs     | 0.50–1 USD     |
+| **Total estimado**  | **6–12 USD**   |
+
+---
+
+# 11. Ejecución del Proyecto
+
+## 1. Inicializar backend remoto
+
+```bash
+cd terraform/backend-bootstrap
+terraform apply
+```
+
+## 2. Crear infraestructura ECS
+
+```bash
+cd terraform/ecs-deploy
+terraform init
+terraform apply
+```
+
+## 3. Activar pipeline CI/CD
+
+```bash
 git add .
 git commit -m "deploy"
 git push
 ```
 
-### 4. Acceso a la aplicación
+## 4. Obtener URL pública
 
-Obtener URL del Load Balancer:
-
-```
+```bash
 terraform output
 ```
 
 ---
 
-## 11. capturas 
-![Grafana](Scree-grafana.png)
-![Prometheus](Screeen-prometheus.png)
+# 12. Troubleshooting (Guía Rápida)
 
+### Problema: ECS no actualiza imagen  
+Solución:
+```bash
+aws ecs update-service --force-new-deployment
+```
+
+### Problema: error en build de Docker  
+Revisar:
+- COPY incorrecto  
+- Contexto de build  
+
+### Problema: Snyk no detecta proyecto  
+Verificar:
+- working-directory correcto  
+- Archivo package.json presente  
+
+---
+
+Trabajo práctico educativo para MundosE.
