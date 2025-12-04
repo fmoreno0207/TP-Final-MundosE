@@ -6,7 +6,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copiar package.json desde frontend
-COPY frontend/package*.json ./
+COPY package*.json ./
 
 # Instalar dependencias
 RUN npm config set registry https://registry.npmjs.org/ && npm ci
