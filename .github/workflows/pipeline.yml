@@ -94,7 +94,7 @@ jobs:
           file: ./frontend/Dockerfile
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest || true
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
 
       # ------------------------------------
       # Snyk escaneo de imagenes de Docker
