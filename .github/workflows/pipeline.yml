@@ -1,4 +1,4 @@
-name: Build and Deploy ECS using ECR V-2
+name: Build and Deploy frontend-prometheus-grafana-ESlint-Snyk
 
 on:
   push:
