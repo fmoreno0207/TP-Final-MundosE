@@ -80,7 +80,7 @@ jobs:
         working-directory: ./frontend
         run: |
           snyk auth "$SNYK_TOKEN"
-          snyk test --file=package.json --package-manager=npm --severity-threshold=high
+          snyk test --file=./frontend/package.json --package-manager=npm --severity-threshold=high
 
       # ====================================
       # 5. BUILD & PUSH FRONTEND (solo si cambia)
