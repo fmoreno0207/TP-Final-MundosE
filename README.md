@@ -1,6 +1,6 @@
 # Trabajo Final MundosE  
 ## Deploy Profesional de Aplicación Next.js + Grafana + Prometheus en AWS ECS/Fargate con Terraform y CI/CD GitHub Actions  
-**Autor:** Fernando Moreno  
+**Autor:** Mariano Vicente - Fernando Moreno  
 
 ---
 
