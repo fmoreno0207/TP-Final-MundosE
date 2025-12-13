@@ -1,6 +1,9 @@
 name: branch pipeline
 on: [ push ]
 
+defaults:
+  run:
+    working-directory: ./frontend
 
 jobs:
   eslint:
