@@ -196,6 +196,14 @@ CMD ["npm", "start"]
 
 # 6. Pipeline CI/CD – GitHub Actions
 
+## 6.1 Eslint y Testing
+El branch pipeline ejecuta ante cada push:
+
+1. **ESLint** 
+2. **Test** (solo si el paso anterior no fallo)
+
+## 6.2 Deployment
+
 El pipeline ejecuta:
 
 1. **Detección de cambios** (solo construye lo necesario)  
