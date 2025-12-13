@@ -5,10 +5,16 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
+    "lint": "next lint",
     "start": "next start",
-    "lint": "eslint ."
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed --debug",
+    "sbom" : "cyclonedx-npm --validate"
   },
   "dependencies": {
+    "@cyclonedx/cyclonedx-npm": "^4.1.2",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -47,7 +53,7 @@
     "geist": "^1.3.1",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
-    "next": "^14.2.33",
+    "next": "14.2.16",
     "next-themes": "^0.4.6",
     "prom-client": "^15.1.3",
     "react": "^18",
@@ -63,16 +69,23 @@
     "zod": "3.25.67"
   },
   "devDependencies": {
-    "@cyclonedx/bom": "^4.1.3",
-    "@tailwindcss/postcss": "^4.1.17",
+    "@playwright/test": "^1.48.2",
+    "@tailwindcss/postcss": "^4.1.9",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "^14.2.16",
+    "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.2.7",
+    "jsdom": "^25.0.1",
+    "node-mocks-http": "^1.14.1",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2.1.9"
   }
 }
