@@ -1,4 +1,4 @@
-name: CI/CD Frontend + Prometheus + Grafana (ESLint, Snyk, SBOM, ECS)
+name: CI/CD Frontend + Prometheus + Grafana (ESLint, Snyk, SBOM, AWS ECS)
 
 on:
   push:
