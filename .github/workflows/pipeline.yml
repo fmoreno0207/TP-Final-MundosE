@@ -1,4 +1,4 @@
-name: Build Push and Deploy frontend-prometheus-grafana-ESlint-Snyk
+name: CI/CD Frontend + Prometheus + Grafana (ESLint, Snyk, SBOM, ECS)
 
 on:
   push:
@@ -6,19 +6,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  # ============================================================
+  # 1. VALIDACIÓN DE CÓDIGO
+  # ============================================================
+  validate_code:
+    name: Validate Code (ESLint)
     runs-on: ubuntu-latest
 
     steps:
-      # ------------------------------------
-      # 1. Checkout del código
-      # ------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ------------------------------------
-      # 2. Detectar cambios por carpetas
-      # ------------------------------------
       - name: Detect changes
         id: changes
         uses: dorny/paths-filter@v3
@@ -31,34 +29,7 @@ jobs:
             prometheus:
               - 'monitoring/prometheus/**'
 
-      # DEBUG (opcional)
-      - name: Debug cambios
-        run: |
-          echo "Frontend: ${{ steps.changes.outputs.frontend }}"
-          echo "Grafana: ${{ steps.changes.outputs.grafana }}"
-          echo "Prometheus: ${{ steps.changes.outputs.prometheus }}"
-
-      # ------------------------------------
-      # 3. Credenciales AWS
-      # ------------------------------------
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      # ------------------------------------
-      # 4. Login a Amazon ECR
-      # ------------------------------------
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      # ------------------------------------
-      # ESLint (solo si hay cambios en frontend)
-      # ------------------------------------
-      - name: Install deps for lint
+      - name: Install frontend dependencies
         if: steps.changes.outputs.frontend == 'true'
         working-directory: ./frontend
         run: npm ci
@@ -68,13 +39,70 @@ jobs:
         working-directory: ./frontend
         run: npm run lint
 
-      # ------------------------------------
-      # Snyk (npm dependency security scan)
-      # ------------------------------------
+  # ============================================================
+  # 2. BUILD Y PUSH DE IMÁGENES
+  # ============================================================
+  build_images:
+    name: Build & Push Docker Images
+    needs: validate_code
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push Frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/trabajo-final-mundose-frontend:latest
+
+      - name: Build & Push Grafana
+        uses: docker/build-push-action@v6
+        with:
+          context: ./monitoring/grafana
+          file: ./monitoring/grafana/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/trabajo-final-mundose-grafana:latest
+
+      - name: Build & Push Prometheus
+        uses: docker/build-push-action@v6
+        with:
+          context: ./monitoring/prometheus
+          file: ./monitoring/prometheus/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/trabajo-final-mundose-prometheus:latest
+
+  # ============================================================
+  # 3. SEGURIDAD Y SBOM
+  # ============================================================
+  security_controls:
+    name: Security Scans & SBOM
+    needs: build_images
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Install Snyk
         run: npm install -g snyk
 
-      - name: Snyk test (npm dependencies)
+      - name: Snyk - NPM dependencies
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         working-directory: ./frontend
@@ -82,90 +110,45 @@ jobs:
           snyk auth "$SNYK_TOKEN"
           snyk test --file=package.json --package-manager=npm --severity-threshold=high
 
-      # ====================================
-      # 5. BUILD & PUSH FRONTEND (solo si cambia)
-      # ====================================
-      - name: Build & Push Frontend
-        if: steps.changes.outputs.frontend == 'true'
-        id: build_frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
-
-      # ------------------------------------
-      # Snyk escaneo de imagenes de Docker
-      # ------------------------------------
-      - name: Snyk Docker scan
-        if: steps.changes.outputs.frontend == 'true'
+      - name: Snyk - Docker image
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
           snyk auth "$SNYK_TOKEN"
           snyk test --docker \
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest \
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/trabajo-final-mundose-frontend:latest \
             --severity-threshold=high || true
 
-      # ====================================
-      # 6. BUILD & PUSH GRAFANA (solo si cambia)
-      # ====================================
-      - name: Build & Push Grafana
-        if: steps.changes.outputs.grafana == 'true'
-        id: build_grafana
-        uses: docker/build-push-action@v6
-        with:
-          context: ./monitoring/grafana
-          file: ./monitoring/grafana/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-grafana:latest
-
-      # ====================================
-      # 7. BUILD & PUSH PROMETHEUS (solo si cambia)
-      # ====================================
-      - name: Build & Push Prometheus
-        if: steps.changes.outputs.prometheus == 'true'
-        id: build_prometheus
-        uses: docker/build-push-action@v6
-        with:
-          context: ./monitoring/prometheus
-          file: ./monitoring/prometheus/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-prometheus:latest
-
-      # ------------------------------------
-      # 8. ¿Hubo algún cambio en alguna imagen?
-      # ------------------------------------
-      - name: Decide if update is required
-        id: decide
+      - name: Generate SBOM (CycloneDX)
+        working-directory: ./frontend
         run: |
-          FRONT=${{ steps.changes.outputs.frontend }}
-          GRAF=${{ steps.changes.outputs.grafana }}
-          PROM=${{ steps.changes.outputs.prometheus }}
+          npx @cyclonedx/cyclonedx-npm -o sbom.json
 
-          if [ "$FRONT" = "true" ] || [ "$GRAF" = "true" ] || [ "$PROM" = "true" ]; then
-            echo "update=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "update=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-frontend
+          path: frontend/sbom.json
 
-      # ------------------------------------
-      # 9. Redeploy ECS SOLO si hubo cambios
-      # ------------------------------------
-      - name: Force new ECS deployment
-        if: steps.decide.outputs.update == 'true'
+  # ============================================================
+  # 4. DEPLOY EN ECS
+  # ============================================================
+  deploy_runtime:
+    name: Deploy to ECS
+    needs: security_controls
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Force ECS redeploy
         run: |
           aws ecs update-service \
             --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
             --service ${{ secrets.ECS_SERVICE_NAME }} \
             --force-new-deployment
-
-      # ------------------------------------
-      # 10. Mensaje final
-      # ------------------------------------
-      - name: Done
-        run: echo "Pipeline completado!"
