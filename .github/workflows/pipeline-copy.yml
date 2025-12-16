@@ -1,4 +1,4 @@
-name: Build Push and Deploy frontend-prometheus-grafana-ESlint-Snyk
+name: Build Push and Deploy frontend-prometheus-grafana-ESlint-Snyk##
 
 on:
   push:
