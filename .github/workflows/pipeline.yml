@@ -6,13 +6,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  detect_changes:
+    name: Detect changes
     runs-on: ubuntu-latest
-
+    outputs:
+      frontend: ${{ steps.changes.outputs.frontend }}
+      grafana: ${{ steps.changes.outputs.grafana }}
+      prometheus: ${{ steps.changes.outputs.prometheus }}
     steps:
-      # ====================================================
-      # 1. CHECKOUT Y PREPARACIÓN
-      # ====================================================
       # ------------------------------------
       # 1. Checkout del código
       # ------------------------------------
@@ -41,9 +42,69 @@ jobs:
           echo "Grafana: ${{ steps.changes.outputs.grafana }}"
           echo "Prometheus: ${{ steps.changes.outputs.prometheus }}"
 
-      # ====================================================
-      # 2. AUTENTICACIÓN AWS / ECR
-      # ====================================================
+
+  eslint:
+    name: ESLint
+    needs: detect_changes
+    if: needs.detect_changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # ------------------------------------
+      # 1. Checkout del código
+      # ------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------
+      # ESLint (solo si hay cambios en frontend)
+      # ------------------------------------
+      - name: Install deps for lint
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: ./frontend
+        run: npm run lint
+
+
+  snyk_npm:
+    name: Snyk (npm)
+    needs: detect_changes
+    if: needs.detect_changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # ------------------------------------
+      # 1. Checkout del código
+      # ------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------
+      # Snyk (npm dependency security scan)
+      # ------------------------------------
+      - name: Install Snyk
+        run: npm install -g snyk
+
+      - name: Snyk test (npm dependencies)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        working-directory: ./frontend
+        run: |
+          snyk auth "$SNYK_TOKEN"
+          snyk test --file=package.json --package-manager=npm --severity-threshold=high
+
+
+  build_push_images:
+    name: Build & Push images (ECR)
+    needs: [detect_changes, eslint, snyk_npm]
+    runs-on: ubuntu-latest
+    steps:
+      # ------------------------------------
+      # 1. Checkout del código
+      # ------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       # ------------------------------------
       # 3. Credenciales AWS
       # ------------------------------------
@@ -61,47 +122,11 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # ====================================================
-      # 3. CALIDAD DE CÓDIGO (ESLint)
-      # ====================================================
-      # ------------------------------------
-      # ESLint (solo si hay cambios en frontend)
-      # ------------------------------------
-      - name: Install deps for lint
-        if: steps.changes.outputs.frontend == 'true'
-        working-directory: ./frontend
-        run: npm ci
-
-      - name: Run ESLint
-        if: steps.changes.outputs.frontend == 'true'
-        working-directory: ./frontend
-        run: npm run lint
-
-      # ====================================================
-      # 4. SEGURIDAD DE DEPENDENCIAS (Snyk npm)
-      # ====================================================
-      # ------------------------------------
-      # Snyk (npm dependency security scan)
-      # ------------------------------------
-      - name: Install Snyk
-        run: npm install -g snyk
-
-      - name: Snyk test (npm dependencies)
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        working-directory: ./frontend
-        run: |
-          snyk auth "$SNYK_TOKEN"
-          snyk test --file=package.json --package-manager=npm --severity-threshold=high
-
-      # ====================================================
-      # 5. BUILD & PUSH DE IMÁGENES
-      # ====================================================
       # ====================================
       # 5. BUILD & PUSH FRONTEND (solo si cambia)
       # ====================================
       - name: Build & Push Frontend
-        if: steps.changes.outputs.frontend == 'true'
+        if: needs.detect_changes.outputs.frontend == 'true'
         id: build_frontend
         uses: docker/build-push-action@v6
         with:
@@ -111,24 +136,11 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
 
-      # ------------------------------------
-      # Snyk escaneo de imagenes de Docker
-      # ------------------------------------
-      - name: Snyk Docker scan
-        if: steps.changes.outputs.frontend == 'true'
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: |
-          snyk auth "$SNYK_TOKEN"
-          snyk test --docker \
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest \
-            --severity-threshold=high || true
-
       # ====================================
       # 6. BUILD & PUSH GRAFANA (solo si cambia)
       # ====================================
       - name: Build & Push Grafana
-        if: steps.changes.outputs.grafana == 'true'
+        if: needs.detect_changes.outputs.grafana == 'true'
         id: build_grafana
         uses: docker/build-push-action@v6
         with:
@@ -142,7 +154,7 @@ jobs:
       # 7. BUILD & PUSH PROMETHEUS (solo si cambia)
       # ====================================
       - name: Build & Push Prometheus
-        if: steps.changes.outputs.prometheus == 'true'
+        if: needs.detect_changes.outputs.prometheus == 'true'
         id: build_prometheus
         uses: docker/build-push-action@v6
         with:
@@ -152,30 +164,78 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-prometheus:latest
 
-      # ====================================================
-      # 6. DEPLOY ECS
-      # ====================================================
-      # ------------------------------------
-      # 8. ¿Hubo algún cambio en alguna imagen?
-      # ------------------------------------
-      - name: Decide if update is required
-        id: decide
-        run: |
-          FRONT=${{ steps.changes.outputs.frontend }}
-          GRAF=${{ steps.changes.outputs.grafana }}
-          PROM=${{ steps.changes.outputs.prometheus }}
 
-          if [ "$FRONT" = "true" ] || [ "$GRAF" = "true" ] || [ "$PROM" = "true" ]; then
-            echo "update=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "update=false" >> "$GITHUB_OUTPUT"
-          fi
+  snyk_docker:
+    name: Snyk (Docker image)
+    needs: [detect_changes, build_push_images]
+    if: needs.detect_changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # ------------------------------------
+      # 1. Checkout del código
+      # ------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------
+      # 3. Credenciales AWS
+      # ------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # ------------------------------------
+      # 4. Login a Amazon ECR
+      # ------------------------------------
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ------------------------------------
+      # Snyk escaneo de imagenes de Docker
+      # ------------------------------------
+      - name: Install Snyk
+        run: npm install -g snyk
+
+      - name: Snyk Docker scan
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk auth "$SNYK_TOKEN"
+          snyk test --docker \
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest \
+            --severity-threshold=high || true
+
+
+  deploy_ecs:
+    name: Deploy ECS (force new deployment)
+    needs: [detect_changes, build_push_images]
+    if: needs.detect_changes.outputs.frontend == 'true' || needs.detect_changes.outputs.grafana == 'true' || needs.detect_changes.outputs.prometheus == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # ------------------------------------
+      # 1. Checkout del código
+      # ------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------
+      # 3. Credenciales AWS
+      # ------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       # ------------------------------------
       # 9. Redeploy ECS SOLO si hubo cambios
       # ------------------------------------
       - name: Force new ECS deployment
-        if: steps.decide.outputs.update == 'true'
         run: |
           aws ecs update-service \
             --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
