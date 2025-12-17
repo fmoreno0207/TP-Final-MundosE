@@ -6,22 +6,27 @@ on:
   workflow_dispatch:
 
 jobs:
-  detect_changes:
-    name: Detect changes
+  # ==================================================
+  # 1. SOURCE VALIDATION
+  # ==================================================
+  source-validation:
+    name: Source Validation & Change Detection
     runs-on: ubuntu-latest
+
     outputs:
       frontend: ${{ steps.changes.outputs.frontend }}
       grafana: ${{ steps.changes.outputs.grafana }}
       prometheus: ${{ steps.changes.outputs.prometheus }}
+
     steps:
       # ------------------------------------
-      # 1. Checkout del código
+      # Checkout del código
       # ------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ------------------------------------
-      # 2. Detectar cambios por carpetas
+      # Detectar cambios por carpetas
       # ------------------------------------
       - name: Detect changes
         id: changes
@@ -42,21 +47,53 @@ jobs:
           echo "Grafana: ${{ steps.changes.outputs.grafana }}"
           echo "Prometheus: ${{ steps.changes.outputs.prometheus }}"
 
-
-  eslint:
-    name: ESLint
-    needs: detect_changes
-    if: needs.detect_changes.outputs.frontend == 'true'
+  # ==================================================
+  # 2. AWS AUTHENTICATION
+  # ==================================================
+  aws-auth:
+    name: AWS Authentication & ECR Login
     runs-on: ubuntu-latest
+    needs: source-validation
+
+    outputs:
+      registry: ${{ steps.login-ecr.outputs.registry }}
+
     steps:
-      # ------------------------------------
-      # 1. Checkout del código
-      # ------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ------------------------------------
-      # ESLint (solo si hay cambios en frontend)
+      # Credenciales AWS
+      # ------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # ------------------------------------
+      # Login a Amazon ECR
+      # ------------------------------------
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+  # ==================================================
+  # 3. STATIC ANALYSIS & DEPENDENCY SECURITY
+  # ==================================================
+  security-analysis:
+    name: Static Code & Dependency Security Analysis
+    runs-on: ubuntu-latest
+    needs: source-validation
+    if: needs.source-validation.outputs.frontend == 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------
+      # ESLint
       # ------------------------------------
       - name: Install deps for lint
         working-directory: ./frontend
@@ -65,19 +102,6 @@ jobs:
       - name: Run ESLint
         working-directory: ./frontend
         run: npm run lint
-
-
-  snyk_npm:
-    name: Snyk (npm)
-    needs: detect_changes
-    if: needs.detect_changes.outputs.frontend == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      # ------------------------------------
-      # 1. Checkout del código
-      # ------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       # ------------------------------------
       # Snyk (npm dependency security scan)
@@ -93,148 +117,90 @@ jobs:
           snyk auth "$SNYK_TOKEN"
           snyk test --file=package.json --package-manager=npm --severity-threshold=high
 
-
-  build_push_images:
-    name: Build & Push images (ECR)
-    needs: [detect_changes, eslint, snyk_npm]
+  # ==================================================
+  # 4. BUILD & PUSH FRONTEND IMAGE
+  # ==================================================
+  build-frontend:
+    name: Build & Push Frontend Image
     runs-on: ubuntu-latest
+    needs: [source-validation, aws-auth]
+    if: needs.source-validation.outputs.frontend == 'true'
+
     steps:
-      # ------------------------------------
-      # 1. Checkout del código
-      # ------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ------------------------------------
-      # 3. Credenciales AWS
+      # Build & Push Frontend
       # ------------------------------------
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      # ------------------------------------
-      # 4. Login a Amazon ECR
-      # ------------------------------------
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      # ====================================
-      # 5. BUILD & PUSH FRONTEND (solo si cambia)
-      # ====================================
       - name: Build & Push Frontend
-        if: needs.detect_changes.outputs.frontend == 'true'
-        id: build_frontend
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
-
-      # ====================================
-      # 6. BUILD & PUSH GRAFANA (solo si cambia)
-      # ====================================
-      - name: Build & Push Grafana
-        if: needs.detect_changes.outputs.grafana == 'true'
-        id: build_grafana
-        uses: docker/build-push-action@v6
-        with:
-          context: ./monitoring/grafana
-          file: ./monitoring/grafana/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-grafana:latest
-
-      # ====================================
-      # 7. BUILD & PUSH PROMETHEUS (solo si cambia)
-      # ====================================
-      - name: Build & Push Prometheus
-        if: needs.detect_changes.outputs.prometheus == 'true'
-        id: build_prometheus
-        uses: docker/build-push-action@v6
-        with:
-          context: ./monitoring/prometheus
-          file: ./monitoring/prometheus/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-prometheus:latest
-
-
-  snyk_docker:
-    name: Snyk (Docker image)
-    needs: [detect_changes, build_push_images]
-    if: needs.detect_changes.outputs.frontend == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      # ------------------------------------
-      # 1. Checkout del código
-      # ------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+            ${{ needs.aws-auth.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
 
       # ------------------------------------
-      # 3. Credenciales AWS
+      # Snyk escaneo de imagen Docker
       # ------------------------------------
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      # ------------------------------------
-      # 4. Login a Amazon ECR
-      # ------------------------------------
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      # ------------------------------------
-      # Snyk escaneo de imagenes de Docker
-      # ------------------------------------
-      - name: Install Snyk
-        run: npm install -g snyk
-
       - name: Snyk Docker scan
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
           snyk auth "$SNYK_TOKEN"
           snyk test --docker \
-            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest \
+            ${{ needs.aws-auth.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest \
             --severity-threshold=high || true
 
-
-  deploy_ecs:
-    name: Deploy ECS (force new deployment)
-    needs: [detect_changes, build_push_images]
-    if: needs.detect_changes.outputs.frontend == 'true' || needs.detect_changes.outputs.grafana == 'true' || needs.detect_changes.outputs.prometheus == 'true'
+  # ==================================================
+  # 5. BUILD & PUSH OBSERVABILITY IMAGES
+  # ==================================================
+  build-observability:
+    name: Build & Push Observability Images
     runs-on: ubuntu-latest
+    needs: [source-validation, aws-auth]
+
     steps:
-      # ------------------------------------
-      # 1. Checkout del código
-      # ------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ------------------------------------
-      # 3. Credenciales AWS
+      # Grafana
       # ------------------------------------
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Build & Push Grafana
+        if: needs.source-validation.outputs.grafana == 'true'
+        uses: docker/build-push-action@v6
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          context: ./monitoring/grafana
+          file: ./monitoring/grafana/Dockerfile
+          push: true
+          tags: |
+            ${{ needs.aws-auth.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-grafana:latest
 
       # ------------------------------------
-      # 9. Redeploy ECS SOLO si hubo cambios
+      # Prometheus
       # ------------------------------------
+      - name: Build & Push Prometheus
+        if: needs.source-validation.outputs.prometheus == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./monitoring/prometheus
+          file: ./monitoring/prometheus/Dockerfile
+          push: true
+          tags: |
+            ${{ needs.aws-auth.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-prometheus:latest
+
+  # ==================================================
+  # 6. ECS DEPLOYMENT
+  # ==================================================
+  ecs-deploy:
+    name: ECS Service Redeployment
+    runs-on: ubuntu-latest
+    needs: [build-frontend, build-observability]
+
+    steps:
       - name: Force new ECS deployment
         run: |
           aws ecs update-service \
@@ -242,8 +208,35 @@ jobs:
             --service ${{ secrets.ECS_SERVICE_NAME }} \
             --force-new-deployment
 
-      # ------------------------------------
-      # 10. Mensaje final
-      # ------------------------------------
-      - name: Done
-        run: echo "Pipeline completado!"
+  # ==================================================
+  # 7. SOFTWARE BILL OF MATERIALS
+  # ==================================================
+  sbom:
+    name: Generate Software Bill of Materials (CycloneDX)
+    runs-on: ubuntu-latest
+    needs: ecs-deploy
+
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate SBOM
+        run: npm run sbom
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: frontend/sbom.json
