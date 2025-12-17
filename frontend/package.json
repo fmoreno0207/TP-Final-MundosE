@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "sbom": "npx @cyclonedx/bom -o sbom.json"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
