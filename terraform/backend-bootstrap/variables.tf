@@ -8,7 +8,7 @@ variable "bucket_name" {
   default     = "bucket-terraform-state-proyecto-final-mundose"
 }
 
-variable "dynamodb_table" {
-  description = "Nombre de la tabla DynamoDB para el lock del state"
-  default     = "terraform-lock-table"
-}
+# variable "dynamodb_table" {
+#   description = "Nombre de la tabla DynamoDB para el lock del state"
+#   default     = "terraform-lock-table"
+# }
