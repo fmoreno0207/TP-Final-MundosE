@@ -193,7 +193,7 @@ jobs:
         run: npm ci
 
       - name: Generate SBOM
-        run: npm run sbom
+        run: npx @cyclonedx/bom -o sbom.json
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
