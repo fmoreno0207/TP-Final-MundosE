@@ -1,4 +1,4 @@
-name: Build Push and Deploy frontend-prometheus-grafana-ESlint-Snyk
+name: Build Push and Deploy frontend-prometheus-grafana-ESlint-Snyk (Copy)
 
 on:
   push:
@@ -6,17 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ------------------------------------
-  # JOB 1 — Checkout + Detect changes
-  # ------------------------------------
-  detect-changes:
-    name: Source Checkout & Change Detection
+  build-and-deploy:
     runs-on: ubuntu-latest
-
-    outputs:
-      frontend: ${{ steps.changes.outputs.frontend }}
-      grafana: ${{ steps.changes.outputs.grafana }}
-      prometheus: ${{ steps.changes.outputs.prometheus }}
 
     steps:
       # ------------------------------------
@@ -47,24 +38,6 @@ jobs:
           echo "Grafana: ${{ steps.changes.outputs.grafana }}"
           echo "Prometheus: ${{ steps.changes.outputs.prometheus }}"
 
-  # ------------------------------------
-  # JOB 2 — AWS Credentials + ECR Login
-  # ------------------------------------
-  aws-auth:
-    name: AWS Auth & ECR Login
-    runs-on: ubuntu-latest
-    needs: detect-changes
-
-    outputs:
-      registry: ${{ steps.login-ecr.outputs.registry }}
-
-    steps:
-      # ------------------------------------
-      # Checkout (necesario en cada job)
-      # ------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       # ------------------------------------
       # 3. Credenciales AWS
       # ------------------------------------
@@ -82,27 +55,16 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-  # ------------------------------------
-  # JOB 3 — ESLint + Snyk (Dependencies)
-  # ------------------------------------
-  security-code:
-    name: Security - ESLint & Snyk (Dependencies)
-    runs-on: ubuntu-latest
-    needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       # ------------------------------------
       # ESLint (solo si hay cambios en frontend)
       # ------------------------------------
       - name: Install deps for lint
+        if: steps.changes.outputs.frontend == 'true'
         working-directory: ./frontend
         run: npm ci
 
       - name: Run ESLint
+        if: steps.changes.outputs.frontend == 'true'
         working-directory: ./frontend
         run: npm run lint
 
@@ -120,23 +82,11 @@ jobs:
           snyk auth "$SNYK_TOKEN"
           snyk test --file=package.json --package-manager=npm --severity-threshold=high
 
-  # ------------------------------------
-  # JOB 4 — Build & Push Frontend + Snyk Docker Scan
-  # ------------------------------------
-  build-frontend:
-    name: Build & Push - Frontend + Snyk Container Scan
-    runs-on: ubuntu-latest
-    needs: [detect-changes, aws-auth, security-code]
-    if: needs.detect-changes.outputs.frontend == 'true'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ------------------------------------
-      # Build & Push Frontend (solo si cambia)
-      # ------------------------------------
+      # ====================================
+      # 5. BUILD & PUSH FRONTEND (solo si cambia)
+      # ====================================
       - name: Build & Push Frontend
+        if: steps.changes.outputs.frontend == 'true'
         id: build_frontend
         uses: docker/build-push-action@v6
         with:
@@ -144,40 +94,26 @@ jobs:
           file: ./frontend/Dockerfile
           push: true
           tags: |
-            ${{ needs.aws-auth.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest
 
       # ------------------------------------
       # Snyk escaneo de imagenes de Docker
       # ------------------------------------
-      - name: Install Snyk
-        run: npm install -g snyk
-
       - name: Snyk Docker scan
+        if: steps.changes.outputs.frontend == 'true'
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
           snyk auth "$SNYK_TOKEN"
           snyk test --docker \
-            ${{ needs.aws-auth.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest \
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-frontend:latest \
             --severity-threshold=high || true
-
-  # ------------------------------------
-  # JOB 5 — Build & Push Grafana + Prometheus
-  # ------------------------------------
-  build-monitoring:
-    name: Build & Push - Grafana & Prometheus
-    runs-on: ubuntu-latest
-    needs: [detect-changes, aws-auth]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       # ====================================
       # 6. BUILD & PUSH GRAFANA (solo si cambia)
       # ====================================
       - name: Build & Push Grafana
-        if: needs.detect-changes.outputs.grafana == 'true'
+        if: steps.changes.outputs.grafana == 'true'
         id: build_grafana
         uses: docker/build-push-action@v6
         with:
@@ -185,13 +121,13 @@ jobs:
           file: ./monitoring/grafana/Dockerfile
           push: true
           tags: |
-            ${{ needs.aws-auth.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-grafana:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-grafana:latest
 
       # ====================================
       # 7. BUILD & PUSH PROMETHEUS (solo si cambia)
       # ====================================
       - name: Build & Push Prometheus
-        if: needs.detect-changes.outputs.prometheus == 'true'
+        if: steps.changes.outputs.prometheus == 'true'
         id: build_prometheus
         uses: docker/build-push-action@v6
         with:
@@ -199,50 +135,46 @@ jobs:
           file: ./monitoring/prometheus/Dockerfile
           push: true
           tags: |
-            ${{ needs.aws-auth.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-prometheus:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ vars.PROJECT_NAME || 'trabajo-final-mundose' }}-prometheus:latest
 
-  # ------------------------------------
-  # JOB 6 — Redeploy ECS (si hubo cambios)
-  # ------------------------------------
-  redeploy-ecs:
-    name: Deploy - ECS Force New Deployment
-    runs-on: ubuntu-latest
-    needs: [detect-changes, aws-auth, build-frontend, build-monitoring]
-    if: |
-      needs.detect-changes.outputs.frontend == 'true' ||
-      needs.detect-changes.outputs.grafana == 'true' ||
-      needs.detect-changes.outputs.prometheus == 'true'
+      # ------------------------------------
+      # 8. ¿Hubo algún cambio en alguna imagen?
+      # ------------------------------------
+      - name: Decide if update is required
+        id: decide
+        run: |
+          FRONT=${{ steps.changes.outputs.frontend }}
+          GRAF=${{ steps.changes.outputs.grafana }}
+          PROM=${{ steps.changes.outputs.prometheus }}
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+          if [ "$FRONT" = "true" ] || [ "$GRAF" = "true" ] || [ "$PROM" = "true" ]; then
+            echo "update=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "update=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      # Reconfigurar credenciales (cada job es una VM nueva)
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      # Redeploy ECS
+      # ------------------------------------
+      # 9. Redeploy ECS SOLO si hubo cambios
+      # ------------------------------------
       - name: Force new ECS deployment
+        if: steps.decide.outputs.update == 'true'
         run: |
           aws ecs update-service \
             --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
             --service ${{ secrets.ECS_SERVICE_NAME }} \
             --force-new-deployment
 
+      # ------------------------------------
+      # 10. Mensaje final
+      # ------------------------------------
       - name: Done
         run: echo "Pipeline completado!"
 
-  # ------------------------------------
-  # JOB 7 — SBOM (CycloneDX)
-  # ------------------------------------
+
   sbom:
     name: Generate SBOM (CycloneDX)
     runs-on: ubuntu-latest
-    needs: redeploy-ecs
+    needs: build-and-deploy
 
     defaults:
       run:
