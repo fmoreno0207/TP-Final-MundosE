@@ -1,4 +1,4 @@
-FROM grafana/grafana:12.2.1
+FROM grafana/grafana:12.4.0-20321528496
 
 WORKDIR /etc/grafana
 
